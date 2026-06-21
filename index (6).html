@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QVM Screener</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      background: #0d1117; color: #c9d1d9;
+      max-width: 900px; margin: 0 auto; padding: 32px 20px;
+    }
+    h1 { font-size: 20px; font-weight: 600; color: #e6edf3; margin: 0 0 4px; }
+    .sub { color: #7d8590; font-size: 13px; margin: 0 0 24px; }
+    .row { display: flex; gap: 8px; margin-bottom: 20px; }
+    input {
+      flex: 1; background: #161b22; border: 1px solid #30363d;
+      color: #c9d1d9; padding: 10px 12px; border-radius: 6px;
+      font-family: inherit; font-size: 14px;
+    }
+    input:focus { outline: none; border-color: #2f81f7; }
+    button {
+      background: #238636; border: none; color: #fff;
+      padding: 10px 18px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; font-size: 14px; font-weight: 500;
+    }
+    button:hover { background: #2ea043; }
+    button:disabled { background: #21262d; color: #7d8590; cursor: not-allowed; }
+    .counts { font-size: 12px; color: #7d8590; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: right; padding: 8px 10px; border-bottom: 1px solid #21262d; }
+    th { color: #7d8590; font-weight: 500; text-align: right; }
+    th:first-child, td:first-child { text-align: left; }
+    td:first-child { color: #2f81f7; font-weight: 500; }
+    .pos { color: #3fb950; }
+    .status { color: #7d8590; font-size: 13px; padding: 20px 0; }
+    .err { color: #f85149; }
+  </style>
+</head>
+<body>
+  <h1>QVM Screener</h1>
+  <p class="sub">Quality · Value · Momentum — отбор кандидатов на US-рынке</p>
+
+  <div class="row">
+    <input id="tickers" type="text"
+      placeholder="AAPL, MSFT, NVDA (пусто = дефолтный список)" />
+    <button id="run" onclick="runScreen()">Сканировать</button>
+  </div>
+
+  <div id="output"></div>
+
+  <script>
+    const fmt = (v, suffix = '') => {
+      if (v === null || v === undefined) return '—';
+      if (v === Infinity || v > 1e6) return '∞';
+      return v.toFixed(suffix === '%' ? 2 : 3) + suffix;
+    };
+
+    async function runScreen() {
+      const btn = document.getElementById('run');
+      const out = document.getElementById('output');
+      const tickers = document.getElementById('tickers').value.trim();
+
+      btn.disabled = true;
+      out.innerHTML = '<div class="status">Сканирую…</div>';
+
+      try {
+        const url = '/api/screen' + (tickers ? '?tickers=' + encodeURIComponent(tickers) : '');
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (data.error) {
+          out.innerHTML = '<div class="status err">Ошибка: ' + data.error + '</div>';
+          return;
+        }
+
+        const c = data.counts;
+        let html = '<div class="counts">Юниверс: ' + c.universe +
+          ' → Quality: ' + c.after_quality +
+          ' → Value: ' + c.after_value +
+          ' → Финал: ' + c.final + '</div>';
+
+        if (!data.results.length) {
+          html += '<div class="status">Ни один кандидат не прошёл все три фильтра.</div>';
+          out.innerHTML = html;
+          return;
+        }
+
+        html += '<table><thead><tr>' +
+          '<th>Тикер</th><th>Earn. Yield</th><th>FCF/Debt</th>' +
+          '<th>GM (Marx)</th><th>Accrual</th><th>3M</th><th>6M</th>' +
+          '</tr></thead><tbody>';
+
+        for (const r of data.results) {
+          html += '<tr>' +
+            '<td>' + r.ticker + '</td>' +
+            '<td>' + fmt(r.earnings_yield * 100, '%') + '</td>' +
+            '<td>' + fmt(r.fcf_debt) + '</td>' +
+            '<td>' + fmt(r.gm_marx * 100, '%') + '</td>' +
+            '<td>' + fmt(r.accrual_ratio * 100, '%') + '</td>' +
+            '<td class="pos">' + fmt(r.pi_3m, '%') + '</td>' +
+            '<td class="pos">' + fmt(r.pi_6m, '%') + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        out.innerHTML = html;
+      } catch (e) {
+        out.innerHTML = '<div class="status err">Сбой запроса: ' + e.message + '</div>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
